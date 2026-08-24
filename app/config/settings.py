@@ -3,7 +3,7 @@ from pydantic import Field
 from pathlib import Path
 
 class Settings(BaseSettings):
-    DATABASE_URL: str = Field(default="postgresql://postgres:postgres@localhost:5432/virtual_league")
+    DATABASE_URL: str = Field(default="postgresql://postgres:postgres@localhost:5433/virtual_league")
     
     MATCHES_URL: str = Field(default="https://bet261.mg/virtual/category/instant-league/8065/matches")
     RESULTS_URL: str = Field(default="https://bet261.mg/virtual/category/instant-league/8065/results")
