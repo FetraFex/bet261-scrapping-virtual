@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+app/config/settings.py
+virtual_league_collector.egg-info/PKG-INFO
+virtual_league_collector.egg-info/SOURCES.txt
+virtual_league_collector.egg-info/dependency_links.txt
+virtual_league_collector.egg-info/requires.txt
+virtual_league_collector.egg-info/top_level.txt
