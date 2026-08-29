@@ -1,17 +1,42 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
-from typing import Optional, List
-from datetime import datetime, timedelta
+from typing import Optional, List, Dict
+from datetime import datetime
 import logging
 
-from app.models.database_models import Match, MatchEvent
+from app.models.database_models import Match, MatchEvent, Team
 from app.normalization.team_normalizer import normalize_team_name
 
 logger = logging.getLogger(__name__)
 
+
 class ResultsRepository:
     def __init__(self, session: Session):
         self.session = session
+        self._team_cache: Dict[int, str] = {}       # team_id → source_name
+        self._match_cache: Optional[List[Match]] = None
+
+    def _load_team_cache(self):
+        """Load all team names into memory once."""
+        if not self._team_cache:
+            for team in self.session.execute(select(Team)).scalars().all():
+                self._team_cache[team.id] = team.source_name
+
+    def _load_match_cache(self, league_id: int):
+        """Load all UPCOMING matches for the league once."""
+        if self._match_cache is None:
+            self._match_cache = self.session.execute(
+                select(Match).filter(
+                    Match.league_id == league_id,
+                    Match.status == "UPCOMING"
+                )
+            ).scalars().all()
+
+    def _get_match_name(self, match: Match) -> str:
+        """Build 'Home vs Away' name string from match IDs."""
+        home = self._team_cache.get(match.home_team_id, "")
+        away = self._team_cache.get(match.away_team_id, "")
+        return f"{home} vs {away}"
 
     def reconcile_and_save_result(
         self,
@@ -22,81 +47,101 @@ class ResultsRepository:
         scheduled_at: Optional[datetime],
         home_score: float,
         away_score: float,
-        goals: List[dict]
+        goals: List[dict],
+        match_name: Optional[str] = None,
+        round_number: Optional[int] = None,
+        half_home_score: Optional[int] = None,
+        half_away_score: Optional[int] = None
     ) -> Optional[Match]:
         """
         Phase 10: Match Reconciliation.
         Connects results back to the original Match created during the 'Matches' phase.
         """
+        # Ensure caches are loaded
+        self._load_team_cache()
+        self._load_match_cache(league_id)
+
         match = None
-        
-        # Strategy 1: Match by external ID
-        if external_id:
+
+        # Strategy 1: Match by name field (most reliable for results API)
+        if match_name and self._match_cache:
+            target = match_name.lower()
+            for candidate in self._match_cache:
+                candidate_name = self._get_match_name(candidate)
+                if candidate_name.lower() == target:
+                    match = candidate
+                    break
+
+        # Strategy 2: Match by normalized team names
+        if not match and self._match_cache:
+            norm_home = normalize_team_name(home_team_name)
+            norm_away = normalize_team_name(away_team_name)
+            for candidate in self._match_cache:
+                home_name = normalize_team_name(self._team_cache.get(candidate.home_team_id, ""))
+                away_name = normalize_team_name(self._team_cache.get(candidate.away_team_id, ""))
+                if home_name == norm_home and away_name == norm_away:
+                    match = candidate
+                    break
+
+        # Strategy 3: Match by external_id if non-zero (fallback)
+        if not match and external_id and external_id != 0:
             match = self.session.execute(
                 select(Match).filter_by(external_id=external_id)
             ).scalar_one_or_none()
-            
-        # Strategy 2: Match by time window and team names
-        if not match and scheduled_at:
-            # We look for UPCOMING matches within a narrow time window (-5 to +5 minutes)
-            time_window_start = scheduled_at - timedelta(minutes=5)
-            time_window_end = scheduled_at + timedelta(minutes=5)
-            
-            candidates = self.session.execute(
-                select(Match).filter(
-                    and_(
-                        Match.league_id == league_id,
-                        Match.status == "UPCOMING",
-                        Match.scheduled_at >= time_window_start,
-                        Match.scheduled_at <= time_window_end
-                    )
-                )
+
+        if match and match.status != "COMPLETED":
+            match.status = "COMPLETED"
+            match.completed_at = datetime.utcnow()
+            match.home_score = int(home_score)
+            match.away_score = int(away_score)
+            match.half_home_score = half_home_score
+            match.half_away_score = half_away_score
+
+            if home_score > away_score:
+                match.result = "HOME"
+            elif away_score > home_score:
+                match.result = "AWAY"
+            else:
+                match.result = "DRAW"
+
+            # Save goal events (with dedup: skip if event already exists
+            # for this match at the same minute — e.g. from playout source)
+            existing_minutes = set()
+            existing_events = self.session.execute(
+                select(MatchEvent.minute).filter_by(match_id=match.id, event_type="GOAL")
             ).scalars().all()
-            
-            # Find the best candidate based on team names
-            norm_home = normalize_team_name(home_team_name)
-            norm_away = normalize_team_name(away_team_name)
-            
-            for candidate in candidates:
-                if candidate.home_team_id and candidate.away_team_id:
-                    # In a real implementation, you'd fetch the actual team canonical names
-                    # to compare, but since Team fetching requires DB calls, we assume
-                    # the repository caller resolved this or we do it carefully.
-                    # For this step, if we reach here, we might just mark AMBIGUOUS if 
-                    # multiple matches are in the same timeslot.
-                    pass
-            
-            if len(candidates) == 1:
-                match = candidates[0]
-            elif len(candidates) > 1:
-                logger.warning(f"Ambiguous match reconciliation for {home_team_name} vs {away_team_name}")
-                return None
-                
-        if match:
-            # Update the match with results
-            if match.status != "COMPLETED":
-                match.status = "COMPLETED"
-                match.completed_at = datetime.utcnow()
-                match.home_score = int(home_score)
-                match.away_score = int(away_score)
-                
-                if home_score > away_score:
-                    match.result = "HOME"
-                elif away_score > home_score:
-                    match.result = "AWAY"
-                else:
-                    match.result = "DRAW"
-                
-                # Save events (Goals)
-                for goal in goals:
-                    event = MatchEvent(
-                        match_id=match.id,
-                        event_type="GOAL",
-                        minute=goal.get('minute', 0),
-                        captured_at=datetime.utcnow()
-                    )
-                    self.session.add(event)
-                    
-                logger.info(f"Reconciled and saved result for match {match.id}")
-                
+            existing_minutes = set(existing_events)
+
+            saved_goals = 0
+            skipped_goals = 0
+            for goal in goals:
+                minute = goal.get('minute', 0)
+                if minute in existing_minutes:
+                    skipped_goals += 1
+                    continue
+
+                scoring_team = goal.get('team', '')
+                team_id = None
+                if scoring_team.lower() == 'home':
+                    team_id = match.home_team_id
+                elif scoring_team.lower() == 'away':
+                    team_id = match.away_team_id
+
+                event = MatchEvent(
+                    match_id=match.id,
+                    event_type="GOAL",
+                    team_id=team_id,
+                    team_name=scoring_team,
+                    minute=minute,
+                    captured_at=datetime.utcnow()
+                )
+                self.session.add(event)
+                existing_minutes.add(minute)
+                saved_goals += 1
+
+            if skipped_goals > 0:
+                logger.info(f"  Dedup: skipped {skipped_goals} existing goal event(s) for match {match.id}")
+
+            logger.info(f"Reconciled: {home_team_name} {int(home_score)}:{int(away_score)} {away_team_name} (match {match.id})")
+
         return match

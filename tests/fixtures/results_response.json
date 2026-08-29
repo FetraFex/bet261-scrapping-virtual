@@ -1,0 +1,107 @@
+{
+  "rounds": [
+    {
+      "expectedStart": "2026-08-24T22:59:18Z",
+      "expectedEnd": "0001-01-01T00:00:00Z",
+      "roundNumber": 13,
+      "matches": [
+        {
+          "id": 0,
+          "entryPointId": 0,
+          "name": "Morocco vs Algeria",
+          "homeTeam": {
+            "name": "Morocco",
+            "points": 0,
+            "position": 0,
+            "won": 0,
+            "lost": 0,
+            "draw": 0
+          },
+          "awayTeam": {
+            "name": "Algeria",
+            "points": 0,
+            "position": 0,
+            "won": 0,
+            "lost": 0,
+            "draw": 0
+          },
+          "goals": [
+            {
+              "minute": 87,
+              "homeScore": 1.0,
+              "awayScore": 0.0,
+              "team": "Home"
+            },
+            {
+              "minute": 88,
+              "homeScore": 1.0,
+              "awayScore": 1.0,
+              "team": "Away"
+            }
+          ],
+          "score": "1:1",
+          "halfTimeScore": "0:0",
+          "expectedStart": "2026-08-24T22:59:18Z"
+        },
+        {
+          "id": 0,
+          "entryPointId": 0,
+          "name": "Spain vs Austria",
+          "homeTeam": {
+            "name": "Spain",
+            "points": 0,
+            "position": 0,
+            "won": 0,
+            "lost": 0,
+            "draw": 0
+          },
+          "awayTeam": {
+            "name": "Austria",
+            "points": 0,
+            "position": 0,
+            "won": 0,
+            "lost": 0,
+            "draw": 0
+          },
+          "goals": [
+            {
+              "minute": 11,
+              "homeScore": 1.0,
+              "awayScore": 0.0,
+              "team": "Home"
+            },
+            {
+              "minute": 25,
+              "homeScore": 2.0,
+              "awayScore": 0.0,
+              "team": "Home"
+            },
+            {
+              "minute": 43,
+              "homeScore": 3.0,
+              "awayScore": 0.0,
+              "team": "Home"
+            },
+            {
+              "minute": 53,
+              "homeScore": 4.0,
+              "awayScore": 0.0,
+              "team": "Home"
+            },
+            {
+              "minute": 65,
+              "homeScore": 5.0,
+              "awayScore": 0.0,
+              "team": "Home"
+            }
+          ],
+          "score": "5:0",
+          "halfTimeScore": "3:0",
+          "expectedStart": "2026-08-24T22:59:18Z"
+        }
+      ],
+      "id": 0,
+      "eventCategoryId": 0
+    }
+  ]
+}

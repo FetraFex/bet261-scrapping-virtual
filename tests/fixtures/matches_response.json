@@ -1,0 +1,116 @@
+{
+  "rounds": [
+    {
+      "expectedStart": "2026-08-24T22:16:18Z",
+      "expectedEnd": "0001-01-01T00:00:00Z",
+      "roundNumber": 87,
+      "matches": [
+        {
+          "id": 76827355,
+          "entryPointId": 8065,
+          "round": "87",
+          "name": "Turkiye vs Senegal",
+          "homeTeam": {
+            "name": "Turkiye",
+            "points": 0,
+            "position": 0,
+            "won": 0,
+            "lost": 0,
+            "draw": 0
+          },
+          "awayTeam": {
+            "name": "Senegal",
+            "points": 0,
+            "position": 0,
+            "won": 0,
+            "lost": 0,
+            "draw": 0
+          },
+          "expectedStart": "0001-01-01T00:00:00Z",
+          "eventBetTypes": [
+            {
+              "id": 2234245454,
+              "eventId": 76827355,
+              "name": "1X2",
+              "eventBetTypeItems": [
+                {
+                  "id": 10222202627,
+                  "eventBetTypeId": 2234245454,
+                  "shortName": "1",
+                  "odds": 1.67,
+                  "active": true,
+                  "bettingAllowed": true,
+                  "canBeSimulated": false
+                },
+                {
+                  "id": 10222202628,
+                  "eventBetTypeId": 2234245454,
+                  "shortName": "X",
+                  "odds": 3.63,
+                  "active": true,
+                  "bettingAllowed": true,
+                  "canBeSimulated": false
+                },
+                {
+                  "id": 10222202629,
+                  "eventBetTypeId": 2234245454,
+                  "shortName": "2",
+                  "odds": 5.37,
+                  "active": true,
+                  "bettingAllowed": true,
+                  "canBeSimulated": false
+                }
+              ],
+              "betTypeId": 30083,
+              "isAsian": false,
+              "baseAmount": 1000.0,
+              "minimumAmountIncrement": 1.0,
+              "maximumAmount": 100000.0,
+              "active": true,
+              "bettingAllowed": true,
+              "displayPriority": 1,
+              "hasExplanations": false,
+              "canBeSimulated": false,
+              "isManual": false,
+              "allowBetBuilder": false
+            }
+          ]
+        },
+        {
+          "id": 76827356,
+          "entryPointId": 8065,
+          "round": "87",
+          "name": "France vs Brazil",
+          "homeTeam": {
+            "name": "France",
+            "points": 0,
+            "position": 0,
+            "won": 0,
+            "lost": 0,
+            "draw": 0
+          },
+          "awayTeam": {
+            "name": "Brazil",
+            "points": 0,
+            "position": 0,
+            "won": 0,
+            "lost": 0,
+            "draw": 0
+          },
+          "expectedStart": "0001-01-01T00:00:00Z",
+          "eventBetTypes": []
+        }
+      ],
+      "id": 0,
+      "eventCategoryId": 0
+    },
+    {
+      "expectedStart": "0001-01-01T00:00:00Z",
+      "expectedEnd": "0001-01-01T00:00:00Z",
+      "roundNumber": 88,
+      "matches": [],
+      "id": 0,
+      "eventCategoryId": 0
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "teams": [
+    {
+      "name": "Spain",
+      "points": 32,
+      "position": 1,
+      "history": ["Draw", "Won", "Won", "Won", "Won"],
+      "won": 10,
+      "lost": 1,
+      "draw": 2
+    },
+    {
+      "name": "France",
+      "points": 31,
+      "position": 2,
+      "history": ["Draw", "Won", "Won", "Won", "Won"],
+      "won": 9,
+      "lost": 0,
+      "draw": 4
+    },
+    {
+      "name": "England",
+      "points": 29,
+      "position": 3,
+      "history": ["Draw", "Won", "Won", "Won", "Lost"],
+      "won": 9,
+      "lost": 2,
+      "draw": 2
+    }
+  ]
+}

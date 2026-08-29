@@ -6,3 +6,10 @@ data/raw/
 data/exports/
 .pytest_cache/
 discovery_report.json
+*.egg-info/
+dist/
+build/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/

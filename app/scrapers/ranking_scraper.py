@@ -1,9 +1,12 @@
 from app.clients.http_client import VirtualLeagueClient
+from app.models.database_models import RawPayload
 import json
 import logging
 from pathlib import Path
 from datetime import datetime
 from app.utils.hashing import calculate_hash
+from typing import Optional
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +16,7 @@ class RankingScraper:
         self.raw_data_dir = raw_data_dir / "ranking"
         self.raw_data_dir.mkdir(parents=True, exist_ok=True)
         
-    async def collect(self) -> dict:
+    async def collect(self, db_session: Optional[Session] = None) -> dict:
         """Fetch the ranking data and save raw payload."""
         logger.info("Fetching ranking from API...")
         data = await self.client.get_ranking()
@@ -34,7 +37,23 @@ class RankingScraper:
             
         logger.info(f"Saved raw ranking payload to {filepath}")
         
+        # Write to raw_payloads DB table if session provided
+        if db_session:
+            raw_payload = RawPayload(
+                source_type="ranking",
+                endpoint=f"/instantleagues/{self._get_league_id()}/ranking",
+                payload_hash=payload_hash,
+                storage_path=str(filepath),
+                http_status=200
+            )
+            db_session.add(raw_payload)
+            logger.debug("Recorded raw ranking payload in DB")
+        
         return data
+
+    def _get_league_id(self) -> int:
+        from app.config.settings import settings
+        return settings.LEAGUE_ID
 
     async def close(self):
         await self.client.close()

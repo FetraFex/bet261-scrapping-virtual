@@ -47,7 +47,8 @@ class MatchRepository:
         home_odds: float,
         draw_odds: float,
         away_odds: float,
-        odds_raw_hash: str
+        odds_raw_hash: str,
+        round_number: Optional[int] = None
     ) -> Match:
         """
         Deduplicates matches and manages odds history.
@@ -76,6 +77,7 @@ class MatchRepository:
                 home_team_id=home_team_id,
                 away_team_id=away_team_id,
                 scheduled_at=scheduled_at,
+                round_number=round_number,
                 status="UPCOMING"
             )
             self.session.add(match)

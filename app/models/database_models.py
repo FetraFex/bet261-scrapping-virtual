@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import List, Optional
-from sqlalchemy import String, Integer, DateTime, Numeric, Boolean, ForeignKey, Index
+from sqlalchemy import String, Integer, DateTime, Numeric, Boolean, ForeignKey, Index, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 class Base(DeclarativeBase):
@@ -39,6 +39,13 @@ class Match(Base):
     league_id: Mapped[int] = mapped_column(ForeignKey("leagues.id"), index=True)
     home_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
     away_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
+    round_number: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+
+    __table_args__ = (
+        Index('ix_matches_league_status', 'league_id', 'status'),
+        Index('ix_matches_completed_at', 'completed_at'),
+        Index('ix_matches_home_away_scheduled', 'home_team_id', 'away_team_id', 'scheduled_at'),
+    )
     
     scheduled_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), index=True)
     first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
@@ -75,6 +82,10 @@ class OddsSnapshot(Base):
     
     match: Mapped["Match"] = relationship(back_populates="odds_snapshots")
 
+    __table_args__ = (
+        Index('ix_odds_match_captured', 'match_id', 'captured_at'),
+    )
+
 class MatchEvent(Base):
     __tablename__ = "match_events"
     
@@ -87,6 +98,10 @@ class MatchEvent(Base):
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     
     match: Mapped["Match"] = relationship(back_populates="events")
+
+    __table_args__ = (
+        Index('ix_events_match_minute', 'match_id', 'minute'),
+    )
 
 class RankingSnapshot(Base):
     __tablename__ = "ranking_snapshots"
@@ -116,6 +131,10 @@ class RankingEntry(Base):
     
     snapshot: Mapped["RankingSnapshot"] = relationship(back_populates="entries")
 
+    __table_args__ = (
+        Index('ix_ranking_entries_snapshot_team', 'snapshot_id', 'team_id'),
+    )
+
 class RawPayload(Base):
     __tablename__ = "raw_payloads"
     
@@ -126,3 +145,28 @@ class RawPayload(Base):
     payload_hash: Mapped[str] = mapped_column(String(255), index=True)
     storage_path: Mapped[str] = mapped_column(String(1024))
     http_status: Mapped[int] = mapped_column(Integer)
+
+class CollectionRun(Base):
+    __tablename__ = "collection_runs"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(50), default="RUNNING")  # RUNNING, COMPLETED, FAILED
+    matches_collected: Mapped[int] = mapped_column(Integer, default=0)
+    results_collected: Mapped[int] = mapped_column(Integer, default=0)
+    ranking_snapshots: Mapped[int] = mapped_column(Integer, default=0)
+    goals_collected: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+
+class ScraperError(Base):
+    __tablename__ = "scraper_errors"
+    
+    id: Mapped[int] = mapped_column(primary_key=True)
+    collection_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection_runs.id"))
+    source_type: Mapped[str] = mapped_column(String(50))  # matches, results, ranking, playout
+    error_type: Mapped[str] = mapped_column(String(255))
+    error_message: Mapped[Optional[str]] = mapped_column(Text)
+    endpoint: Mapped[Optional[str]] = mapped_column(String(1024))
+    http_status: Mapped[Optional[int]] = mapped_column(Integer)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

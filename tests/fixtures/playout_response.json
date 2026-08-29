@@ -1,0 +1,19 @@
+{
+  "matches": [
+    {
+      "id": 76827355,
+      "goals": [
+        {
+          "minute": 27,
+          "homeScore": 1.0,
+          "awayScore": 0.0
+        },
+        {
+          "minute": 82,
+          "homeScore": 2.0,
+          "awayScore": 0.0
+        }
+      ]
+    }
+  ]
+}
