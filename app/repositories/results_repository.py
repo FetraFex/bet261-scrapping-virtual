@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy import select, and_
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Tuple
 from datetime import datetime
 import logging
 
@@ -51,11 +51,13 @@ class ResultsRepository:
         match_name: Optional[str] = None,
         round_number: Optional[int] = None,
         half_home_score: Optional[int] = None,
-        half_away_score: Optional[int] = None
-    ) -> Optional[Match]:
+        half_away_score: Optional[int] = None,
+        collection_run_id: Optional[int] = None
+    ) -> Tuple[Optional[Match], bool]:
         """
         Phase 10: Match Reconciliation.
         Connects results back to the original Match created during the 'Matches' phase.
+        Returns (match, was_newly_completed).
         """
         # Ensure caches are loaded
         self._load_team_cache()
@@ -89,6 +91,7 @@ class ResultsRepository:
                 select(Match).filter_by(external_id=external_id)
             ).scalar_one_or_none()
 
+        newly_completed = False
         if match and match.status != "COMPLETED":
             match.status = "COMPLETED"
             match.completed_at = datetime.utcnow()
@@ -96,6 +99,7 @@ class ResultsRepository:
             match.away_score = int(away_score)
             match.half_home_score = half_home_score
             match.half_away_score = half_away_score
+            newly_completed = True
 
             if home_score > away_score:
                 match.result = "HOME"
@@ -104,9 +108,11 @@ class ResultsRepository:
             else:
                 match.result = "DRAW"
 
+            if collection_run_id:
+                match.collection_run_id = collection_run_id
+
             # Save goal events (with dedup: skip if event already exists
             # for this match at the same minute — e.g. from playout source)
-            existing_minutes = set()
             existing_events = self.session.execute(
                 select(MatchEvent.minute).filter_by(match_id=match.id, event_type="GOAL")
             ).scalars().all()
@@ -133,7 +139,8 @@ class ResultsRepository:
                     team_id=team_id,
                     team_name=scoring_team,
                     minute=minute,
-                    captured_at=datetime.utcnow()
+                    captured_at=datetime.utcnow(),
+                    collection_run_id=collection_run_id
                 )
                 self.session.add(event)
                 existing_minutes.add(minute)
@@ -144,4 +151,4 @@ class ResultsRepository:
 
             logger.info(f"Reconciled: {home_team_name} {int(home_score)}:{int(away_score)} {away_team_name} (match {match.id})")
 
-        return match
+        return match, newly_completed

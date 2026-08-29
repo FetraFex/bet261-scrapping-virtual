@@ -13,7 +13,7 @@ class RankingRepository:
     def __init__(self, session: Session):
         self.session = session
         
-    def save_ranking(self, league_id: int, entries: List[dict], raw_hash: str) -> bool:
+    def save_ranking(self, league_id: int, entries: List[dict], raw_hash: str, collection_run_id: Optional[int] = None) -> bool:
         """
         Saves ranking snapshot ONLY if it has changed from the last known state.
         Returns True if a new snapshot was created, False otherwise.
@@ -30,7 +30,8 @@ class RankingRepository:
             
         snapshot = RankingSnapshot(
             league_id=league_id,
-            source_hash=raw_hash
+            source_hash=raw_hash,
+            collection_run_id=collection_run_id
         )
         self.session.add(snapshot)
         self.session.flush()

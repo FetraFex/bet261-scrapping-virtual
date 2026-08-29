@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     
     LOG_LEVEL: str = Field(default="INFO")
     BROWSER_HEADLESS: bool = Field(default=True)
+    
+    # Event final sync settings (for resolving last-goal race condition)
+    EVENT_FINAL_SYNC_MAX_ATTEMPTS: int = Field(default=3)
+    EVENT_FINAL_SYNC_DELAY_MS: int = Field(default=500)
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

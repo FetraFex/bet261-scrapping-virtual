@@ -61,6 +61,10 @@ class Match(Base):
     
     result: Mapped[Optional[str]] = mapped_column(String(10)) # HOME, DRAW, AWAY
     
+    event_sync_status: Mapped[Optional[str]] = mapped_column(String(20))  # COMPLETE, INCOMPLETE, NOT_APPLICABLE, UNKNOWN
+    
+    collection_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection_runs.id"))
+    
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -80,6 +84,17 @@ class OddsSnapshot(Base):
     
     raw_hash: Mapped[Optional[str]] = mapped_column(String(255))
     
+    # Normalized probabilities (derived from raw odds)
+    raw_implied_home: Mapped[Optional[float]] = mapped_column(Numeric(10, 6))
+    raw_implied_draw: Mapped[Optional[float]] = mapped_column(Numeric(10, 6))
+    raw_implied_away: Mapped[Optional[float]] = mapped_column(Numeric(10, 6))
+    overround: Mapped[Optional[float]] = mapped_column(Numeric(10, 6))
+    normalized_home_prob: Mapped[Optional[float]] = mapped_column(Numeric(10, 6))
+    normalized_draw_prob: Mapped[Optional[float]] = mapped_column(Numeric(10, 6))
+    normalized_away_prob: Mapped[Optional[float]] = mapped_column(Numeric(10, 6))
+    
+    collection_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection_runs.id"))
+    
     match: Mapped["Match"] = relationship(back_populates="odds_snapshots")
 
     __table_args__ = (
@@ -97,6 +112,8 @@ class MatchEvent(Base):
     minute: Mapped[int] = mapped_column(Integer)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     
+    collection_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection_runs.id"))
+    
     match: Mapped["Match"] = relationship(back_populates="events")
 
     __table_args__ = (
@@ -110,6 +127,8 @@ class RankingSnapshot(Base):
     league_id: Mapped[int] = mapped_column(ForeignKey("leagues.id"), index=True)
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, index=True)
     source_hash: Mapped[str] = mapped_column(String(255))
+    
+    collection_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection_runs.id"))
 
     entries: Mapped[List["RankingEntry"]] = relationship(back_populates="snapshot")
 
@@ -157,6 +176,17 @@ class CollectionRun(Base):
     results_collected: Mapped[int] = mapped_column(Integer, default=0)
     ranking_snapshots: Mapped[int] = mapped_column(Integer, default=0)
     goals_collected: Mapped[int] = mapped_column(Integer, default=0)
+    
+    # Granular metrics
+    matches_inserted: Mapped[int] = mapped_column(Integer, default=0)
+    matches_updated: Mapped[int] = mapped_column(Integer, default=0)
+    results_rows_seen: Mapped[int] = mapped_column(Integer, default=0)
+    results_persisted: Mapped[int] = mapped_column(Integer, default=0)
+    events_inserted: Mapped[int] = mapped_column(Integer, default=0)
+    events_duplicates_skipped: Mapped[int] = mapped_column(Integer, default=0)
+    odds_inserted: Mapped[int] = mapped_column(Integer, default=0)
+    odds_duplicates_skipped: Mapped[int] = mapped_column(Integer, default=0)
+    
     error_message: Mapped[Optional[str]] = mapped_column(Text)
 
 class ScraperError(Base):
