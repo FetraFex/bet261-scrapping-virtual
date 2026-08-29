@@ -141,19 +141,22 @@ def _generate_ml_dataset(engine, export_path: Path):
     
     # Merge odds (opening and closing) with matches
     if not odds_df.empty:
+        odds_cols = ["match_id", "captured_at", "home_odds", "draw_odds", "away_odds"]
+        odds_df_slim = odds_df[odds_cols].copy()
+        
         # Get opening odds (first snapshot per match)
-        opening_odds = odds_df.sort_values("captured_at").groupby("match_id").first().reset_index()
-        opening_odds.columns = ["match_id", "opening_odds_id", "opening_captured_at", 
-                                "opening_home_odds", "opening_draw_odds", "opening_away_odds", "opening_hash"]
+        opening = odds_df_slim.sort_values("captured_at").groupby("match_id").first().reset_index()
+        opening.columns = ["match_id", "opening_captured_at", 
+                           "opening_home_odds", "opening_draw_odds", "opening_away_odds"]
         
         # Get closing odds (last snapshot per match)
-        closing_odds = odds_df.sort_values("captured_at").groupby("match_id").last().reset_index()
-        closing_odds.columns = ["match_id", "closing_odds_id", "closing_captured_at",
-                                "closing_home_odds", "closing_draw_odds", "closing_away_odds", "closing_hash"]
+        closing = odds_df_slim.sort_values("captured_at").groupby("match_id").last().reset_index()
+        closing.columns = ["match_id", "closing_captured_at",
+                           "closing_home_odds", "closing_draw_odds", "closing_away_odds"]
         
-        ml_df = matches_df.merge(opening_odds[["match_id", "opening_home_odds", "opening_draw_odds", "opening_away_odds"]], 
+        ml_df = matches_df.merge(opening[["match_id", "opening_home_odds", "opening_draw_odds", "opening_away_odds"]], 
                                 left_on="id", right_on="match_id", how="left")
-        ml_df = ml_df.merge(closing_odds[["match_id", "closing_home_odds", "closing_draw_odds", "closing_away_odds"]], 
+        ml_df = ml_df.merge(closing[["match_id", "closing_home_odds", "closing_draw_odds", "closing_away_odds"]], 
                            left_on="id", right_on="match_id", how="left", suffixes=("", "_closing"))
     else:
         ml_df = matches_df.copy()
