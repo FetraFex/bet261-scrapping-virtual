@@ -141,31 +141,45 @@ def _generate_ml_dataset(engine, export_path: Path):
     
     # Merge odds (opening and closing) with matches
     if not odds_df.empty:
-        odds_cols = ["match_id", "captured_at", "home_odds", "draw_odds", "away_odds"]
+        odds_cols = ["match_id", "captured_at", "home_odds", "draw_odds", "away_odds",
+                     "normalized_home_prob", "normalized_draw_prob", "normalized_away_prob"]
         odds_df_slim = odds_df[odds_cols].copy()
         
         # Get opening odds (first snapshot per match)
         opening = odds_df_slim.sort_values("captured_at").groupby("match_id").first().reset_index()
-        opening.columns = ["match_id", "opening_captured_at", 
-                           "opening_home_odds", "opening_draw_odds", "opening_away_odds"]
+        opening.columns = ["match_id", "opening_captured_at",
+                           "opening_home_odds", "opening_draw_odds", "opening_away_odds",
+                           "opening_normalized_home_prob", "opening_normalized_draw_prob", "opening_normalized_away_prob"]
         
         # Get closing odds (last snapshot per match)
         closing = odds_df_slim.sort_values("captured_at").groupby("match_id").last().reset_index()
         closing.columns = ["match_id", "closing_captured_at",
-                           "closing_home_odds", "closing_draw_odds", "closing_away_odds"]
+                           "closing_home_odds", "closing_draw_odds", "closing_away_odds",
+                           "closing_normalized_home_prob", "closing_normalized_draw_prob", "closing_normalized_away_prob"]
         
-        ml_df = matches_df.merge(opening[["match_id", "opening_home_odds", "opening_draw_odds", "opening_away_odds"]], 
+        ml_df = matches_df.merge(opening[["match_id", "opening_home_odds", "opening_draw_odds", "opening_away_odds",
+                                           "opening_normalized_home_prob", "opening_normalized_draw_prob", "opening_normalized_away_prob"]],
                                 left_on="id", right_on="match_id", how="left")
-        ml_df = ml_df.merge(closing[["match_id", "closing_home_odds", "closing_draw_odds", "closing_away_odds"]], 
+        ml_df = ml_df.merge(closing[["match_id", "closing_home_odds", "closing_draw_odds", "closing_away_odds",
+                                      "closing_normalized_home_prob", "closing_normalized_draw_prob", "closing_normalized_away_prob"]],
                            left_on="id", right_on="match_id", how="left", suffixes=("", "_closing"))
     else:
         ml_df = matches_df.copy()
     
-    # Add implied probabilities from odds
-    if "opening_home_odds" in ml_df.columns:
-        ml_df["implied_home_prob"] = 1.0 / ml_df["opening_home_odds"].replace(0, 1)
-        ml_df["implied_draw_prob"] = 1.0 / ml_df["opening_draw_odds"].replace(0, 1)
-        ml_df["implied_away_prob"] = 1.0 / ml_df["opening_away_odds"].replace(0, 1)
+    # Use pre-computed normalized probabilities from odds_snapshots (already sum to 1.0)
+    if "opening_normalized_home_prob" in ml_df.columns:
+        ml_df["implied_home_prob"] = ml_df["opening_normalized_home_prob"]
+        ml_df["implied_draw_prob"] = ml_df["opening_normalized_draw_prob"]
+        ml_df["implied_away_prob"] = ml_df["opening_normalized_away_prob"]
+    elif "opening_home_odds" in ml_df.columns:
+        # Fallback: compute from raw odds if normalized columns missing (legacy data)
+        raw_h = 1.0 / ml_df["opening_home_odds"].replace(0, 1)
+        raw_d = 1.0 / ml_df["opening_draw_odds"].replace(0, 1)
+        raw_a = 1.0 / ml_df["opening_away_odds"].replace(0, 1)
+        total = raw_h + raw_d + raw_a
+        ml_df["implied_home_prob"] = raw_h / total
+        ml_df["implied_draw_prob"] = raw_d / total
+        ml_df["implied_away_prob"] = raw_a / total
     
     # Add team names from teams table
     if not teams_df.empty:

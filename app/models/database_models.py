@@ -40,6 +40,7 @@ class Match(Base):
     home_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
     away_team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True)
     round_number: Mapped[Optional[int]] = mapped_column(Integer, index=True)
+    league_name: Mapped[Optional[str]] = mapped_column(String(255))
 
     __table_args__ = (
         Index('ix_matches_league_status', 'league_id', 'status'),
@@ -61,7 +62,7 @@ class Match(Base):
     
     result: Mapped[Optional[str]] = mapped_column(String(10)) # HOME, DRAW, AWAY
     
-    event_sync_status: Mapped[Optional[str]] = mapped_column(String(20))  # COMPLETE, INCOMPLETE, NOT_APPLICABLE, UNKNOWN
+    event_sync_status: Mapped[Optional[str]] = mapped_column(String(20))  # COMPLETE, INCOMPLETE, NOT_APPLICABLE
     
     collection_run_id: Mapped[Optional[int]] = mapped_column(ForeignKey("collection_runs.id"))
     
@@ -162,7 +163,7 @@ class RawPayload(Base):
     endpoint: Mapped[str] = mapped_column(String(1024))
     captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
     payload_hash: Mapped[str] = mapped_column(String(255), index=True)
-    storage_path: Mapped[str] = mapped_column(String(1024))
+    storage_path: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     http_status: Mapped[int] = mapped_column(Integer)
 
 class CollectionRun(Base):

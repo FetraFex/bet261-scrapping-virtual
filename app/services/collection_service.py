@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import signal
 import time
 from sqlalchemy import create_engine, select, text
@@ -16,9 +17,11 @@ from app.repositories.results_repository import ResultsRepository
 from app.repositories.ranking_repository import RankingRepository
 from app.utils.hashing import calculate_hash
 from app.models.database_models import CollectionRun, ScraperError, Match, MatchEvent
+from app.clients.http_client import PermanentError
 import json
 
 logger = logging.getLogger(__name__)
+
 
 class CollectionService:
     def __init__(self):
@@ -31,7 +34,13 @@ class CollectionService:
         self.playout_scraper = PlayoutScraper(settings.RAW_DATA_DIR)
         
         self._shutdown_requested = False
-        
+        self._total_matches_collected = 0
+        self._total_errors = 0
+        self._total_retries = 0
+        self._cycle_count = 0
+        self._consecutive_empty_cycles = 0
+        self._last_new_match_cycle = 0
+
     def _setup_signal_handlers(self):
         """Setup graceful shutdown handlers for SIGINT/SIGTERM."""
         loop = asyncio.get_event_loop()
@@ -47,9 +56,27 @@ class CollectionService:
         logger.info("Shutdown signal received, finishing current cycle...")
         self._shutdown_requested = True
 
+    def _log_progress(self, cycle_run=None):
+        """Log periodic progress for unattended runs."""
+        self._cycle_count += 1
+        msg = (
+            f"[Progress] Cycles: {self._cycle_count} | "
+            f"Total matches collected: {self._total_matches_collected} | "
+            f"Total errors: {self._total_errors} | "
+            f"Total retries: {self._total_retries}"
+        )
+        if cycle_run:
+            msg += (
+                f" | This cycle: +{cycle_run.matches_inserted} new / "
+                f"{cycle_run.matches_updated} seen, "
+                f"Events: {cycle_run.events_inserted} ins / {cycle_run.events_duplicates_skipped} skip"
+            )
+        logger.info(msg)
+
     async def collect_once(self):
         logger.info(f"Starting collection run at {datetime.utcnow()}")
-        run = CollectionRun(started_at=datetime.utcnow(), status="RUNNING")
+        started_at = datetime.utcnow()
+        run = CollectionRun(started_at=started_at, status="RUNNING")
         
         with self.SessionLocal() as session:
             try:
@@ -61,8 +88,14 @@ class CollectionService:
                 results_repo = ResultsRepository(session)
                 ranking_repo = RankingRepository(session)
                 
-                # Setup League
+                # Setup League — verify it matches configured World Cup league
                 league = matches_repo.get_or_create_league(settings.LEAGUE_ID, settings.LEAGUE_NAME)
+                if league.name != settings.LEAGUE_NAME:
+                    logger.warning(
+                        f"League name mismatch: DB has '{league.name}' but config expects "
+                        f"'{settings.LEAGUE_NAME}'. Updating DB record."
+                    )
+                    league.name = settings.LEAGUE_NAME
                 
                 # 1. Collect Matches
                 matches_data = await self.matches_scraper.collect(db_session=session)
@@ -105,7 +138,8 @@ class CollectionService:
                             away_odds=away_odds,
                             odds_raw_hash=calculate_hash(f"{m.id}_{home_odds}_{draw_odds}_{away_odds}"),
                             round_number=round_data.roundNumber,
-                            collection_run_id=run.id
+                            collection_run_id=run.id,
+                            league_name=settings.LEAGUE_NAME
                         )
                         if was_new:
                             match_inserted += 1
@@ -206,7 +240,7 @@ class CollectionService:
                 run.results_persisted = results_persisted
                 run.events_inserted = events_inserted
                 
-                # 3. Collect Playout data + Final Event Sync
+                # 3. Collect Playout data for current rounds
                 for round_data in matches_data.rounds:
                     if round_data.matches:
                         playout_round = round_data.roundNumber
@@ -268,6 +302,7 @@ class CollectionService:
                                         logger.info(f"  Dedup: skipped {skipped} existing playout goal(s) for match {match.id}")
                         except Exception as e:
                             logger.warning(f"Could not fetch playout for round {playout_round}: {e}")
+                            self._total_errors += 1
                             error = ScraperError(
                                 collection_run_id=run.id,
                                 source_type="playout",
@@ -279,10 +314,13 @@ class CollectionService:
                 
                 run.events_duplicates_skipped = events_skipped
                 
-                # 4. Final Event Sync for newly completed matches (bounded retry)
+                # 4. Final Event Sync for newly completed matches (bounded retry with backoff)
                 await self._final_event_sync(session, newly_completed_matches, run)
                 
-                # 5. Collect Ranking
+                # 5. Post-cycle verification: re-check event counts for ALL newly completed matches
+                await self._post_cycle_event_verification(session, newly_completed_matches, run)
+                
+                # 6. Collect Ranking
                 ranking_data = await self.ranking_scraper.collect(db_session=session)
                 raw_hash = calculate_hash(json.dumps(ranking_data))
                 
@@ -303,6 +341,9 @@ class CollectionService:
                 run.status = "COMPLETED"
                 run.completed_at = datetime.utcnow()
                 session.commit()
+                
+                self._total_matches_collected += match_inserted
+                self._log_progress(run)
                 logger.info(
                     f"Collection run completed. "
                     f"Matches: +{match_inserted} new / {match_updated} seen, "
@@ -312,22 +353,40 @@ class CollectionService:
                 
             except Exception as e:
                 session.rollback()
-                run.status = "FAILED"
-                run.error_message = str(e)
-                run.completed_at = datetime.utcnow()
-                session.commit()
+                self._total_errors += 1
                 logger.error(f"Collection run failed: {e}", exc_info=True)
+                # Record the failure in a fresh session — the rollback above
+                # invalidated the original run object (started_at value is
+                # captured before the transaction, so it stays readable).
+                try:
+                    with self.SessionLocal() as fail_session:
+                        failed_run = CollectionRun(
+                            started_at=started_at,
+                            status="FAILED",
+                            error_message=str(e)[:1000],
+                            completed_at=datetime.utcnow(),
+                        )
+                        fail_session.add(failed_run)
+                        fail_session.commit()
+                        logger.info(f"Recorded FAILED collection run (id={failed_run.id})")
+                except Exception as log_err:
+                    logger.error(f"Could not record FAILED run: {log_err}")
                 raise
 
     async def _final_event_sync(self, session, newly_completed_matches, run):
         """After results are saved, re-fetch playout for newly completed matches
         to catch any events that appeared after the initial fetch.
-        Uses bounded retry with configurable delay."""
+        Uses bounded retry with exponential backoff.
+        
+        Fix for last-goal race condition: the results API may report a completed
+        score before the playout API has flushed the final goal (e.g. stoppage-time).
+        We retry with increasing delays to allow the playout stream to settle.
+        """
         if not newly_completed_matches:
             return
         
         max_attempts = settings.EVENT_FINAL_SYNC_MAX_ATTEMPTS
-        delay_ms = settings.EVENT_FINAL_SYNC_DELAY_MS
+        base_delay_ms = settings.EVENT_FINAL_SYNC_DELAY_MS
         
         for match_info in newly_completed_matches:
             match = match_info['match']
@@ -349,25 +408,29 @@ class CollectionService:
                 match.event_sync_status = "COMPLETE"
                 continue
             
-            # If round_number is None, the playout API won't work — mark as UNKNOWN
+            # If round_number is None, the playout API won't work — mark as INCOMPLETE
             if not match.round_number:
-                if len(event_count) > 0:
-                    match.event_sync_status = "INCOMPLETE"
-                else:
-                    match.event_sync_status = "UNKNOWN"
+                match.event_sync_status = "INCOMPLETE"
                 logger.info(
                     f"  Match {match.id}: round_number is None, cannot sync events. "
                     f"official={official_home}:{official_away} events={len(event_count)}"
                 )
                 continue
             
-            # Events are missing — attempt bounded retry
+            # Events are missing — attempt bounded retry with exponential backoff
             synced = False
             for attempt in range(1, max_attempts + 1):
-                logger.info(f"  Final sync attempt {attempt}/{max_attempts} for match {match.id} "
-                           f"(have {len(event_count)} events, need {official_total})")
+                delay_s = (base_delay_ms * (2 ** (attempt - 1))) / 1000.0
+                # Add jitter: ±20%
+                delay_s *= (1 + random.uniform(-0.2, 0.2))
                 
-                await asyncio.sleep(delay_ms / 1000.0)
+                logger.info(
+                    f"  Final sync attempt {attempt}/{max_attempts} for match {match.id} "
+                    f"(have {len(event_count)} events, need {official_total}, "
+                    f"waiting {delay_s:.2f}s)"
+                )
+                
+                await asyncio.sleep(delay_s)
                 
                 try:
                     playout_data = await self.playout_scraper.collect(
@@ -416,6 +479,7 @@ class CollectionService:
                                 prev_home = cur_home
                                 prev_away = cur_away
                             break
+                    self._total_retries += 1
                     
                     # Re-count
                     event_count = session.execute(
@@ -428,36 +492,191 @@ class CollectionService:
                         logger.info(f"  Final sync: match {match.id} now complete ({len(event_count)} events)")
                         break
                         
+                except PermanentError as e:
+                    # 4xx client error (e.g. 400 Bad Request) — round no longer available
+                    logger.info(f"  Final sync: round no longer available for match {match.id} ({e})")
+                    break
                 except Exception as e:
                     logger.warning(f"  Final sync attempt {attempt} failed for match {match.id}: {e}")
+                    self._total_errors += 1
             
             if not synced:
-                if len(event_count) > 0:
+                match.event_sync_status = "INCOMPLETE"
+                logger.warning(
+                    f"  Match {match.id}: official={official_home}:{official_away} "
+                    f"events={len(event_count)} after {max_attempts} attempts — marked INCOMPLETE"
+                )
+
+    async def _post_cycle_event_verification(self, session, newly_completed_matches, run):
+        """Post-cycle verification: after the main collection cycle, verify that all
+        newly completed matches have the correct number of goal events.
+        
+        This is the key fix for the last-goal race condition. The initial _final_event_sync
+        may have run before the playout API fully flushed the last goal. This second pass
+        provides an additional recovery window with fresh playout fetches.
+        """
+        if not newly_completed_matches:
+            return
+        
+        matches_to_recheck = []
+        for match_info in newly_completed_matches:
+            match = match_info['match']
+            official_total = match_info['official_home'] + match_info['official_away']
+            
+            if official_total == 0:
+                continue
+            
+            # Re-count events (may have been updated by _final_event_sync)
+            event_count = session.execute(
+                select(MatchEvent).filter_by(match_id=match.id, event_type="GOAL")
+            ).scalars().all()
+            
+            if len(event_count) < official_total and match.round_number:
+                matches_to_recheck.append({
+                    'match': match,
+                    'official_total': official_total,
+                    'current_count': len(event_count)
+                })
+        
+        if not matches_to_recheck:
+            return
+        
+        logger.info(
+            f"Post-cycle verification: {len(matches_to_recheck)} matches still need events"
+        )
+        
+        # Collect unique rounds that need re-fetching
+        rounds_to_fetch = set()
+        for item in matches_to_recheck:
+            rounds_to_fetch.add(item['match'].round_number)
+        
+        # Re-fetch playout for each round (one fresh fetch per round, not per match)
+        playout_by_round = {}
+        for round_num in rounds_to_fetch:
+            try:
+                await asyncio.sleep(2.0)  # Settle delay before re-fetch
+                playout_data = await self.playout_scraper.collect(
+                    round_number=round_num,
+                    event_category_id=settings.LEAGUE_ID
+                )
+                playout_by_round[round_num] = playout_data
+            except PermanentError as e:
+                logger.info(f"Post-cycle verification: round {round_num} no longer available ({e})")
+            except Exception as e:
+                logger.warning(f"Post-cycle verification: could not fetch playout for round {round_num}: {e}")
+                self._total_errors += 1
+        
+        # Process each match that needs more events
+        for item in matches_to_recheck:
+            match = item['match']
+            official_total = item['official_total']
+            
+            playout_data = playout_by_round.get(match.round_number)
+            if not playout_data:
+                continue
+            
+            for match_data in playout_data.get('matches', []):
+                if match_data.get('id') != match.external_id:
+                    continue
+                
+                goals = match_data.get('goals', [])
+                existing_minutes = set(session.execute(
+                    select(MatchEvent.minute).filter_by(
+                        match_id=match.id, event_type="GOAL"
+                    )
+                ).scalars().all())
+                
+                new_events = 0
+                prev_home = 0
+                prev_away = 0
+                for goal in goals:
+                    cur_home = int(goal.get('homeScore', 0))
+                    cur_away = int(goal.get('awayScore', 0))
+                    minute = goal.get('minute', 0)
+                    if minute in existing_minutes:
+                        prev_home = cur_home
+                        prev_away = cur_away
+                        continue
+                    team_id = None
+                    team_name = None
+                    if cur_home > prev_home:
+                        team_id = match.home_team_id
+                        team_name = "Home"
+                    elif cur_away > prev_away:
+                        team_id = match.away_team_id
+                        team_name = "Away"
+                    event = MatchEvent(
+                        match_id=match.id,
+                        event_type="GOAL",
+                        team_id=team_id,
+                        team_name=team_name,
+                        minute=minute,
+                        captured_at=datetime.utcnow(),
+                        collection_run_id=run.id
+                    )
+                    session.add(event)
+                    existing_minutes.add(minute)
+                    new_events += 1
+                    prev_home = cur_home
+                    prev_away = cur_away
+                
+                if new_events > 0:
+                    logger.info(
+                        f"Post-cycle: recovered {new_events} missing goal(s) for match {match.id}"
+                    )
+                
+                # Re-check after recovery
+                final_count = session.execute(
+                    select(MatchEvent).filter_by(match_id=match.id, event_type="GOAL")
+                ).scalars().all()
+                
+                if len(final_count) >= official_total:
+                    match.event_sync_status = "COMPLETE"
+                    logger.info(f"Post-cycle: match {match.id} now complete ({len(final_count)} events)")
+                else:
                     match.event_sync_status = "INCOMPLETE"
                     logger.warning(
-                        f"  Match {match.id}: official={official_home}:{official_away} "
-                        f"events={len(event_count)} after {max_attempts} attempts — marked INCOMPLETE"
+                        f"Post-cycle: match {match.id} still incomplete "
+                        f"({len(final_count)}/{official_total} events)"
                     )
-                else:
-                    match.event_sync_status = "UNKNOWN"
-                    logger.warning(f"  Match {match.id}: no events found after {max_attempts} attempts — marked UNKNOWN")
-                    
+                break
+        
     async def run_forever(self):
-        logger.info(f"Starting continuous collection (Interval: {settings.POLL_INTERVAL_SECONDS}s)")
+        logger.info(
+            f"Starting continuous collection "
+            f"(Interval: {settings.POLL_INTERVAL_SECONDS}s ± 20% jitter, "
+            f"League: {settings.LEAGUE_NAME} (ID={settings.LEAGUE_ID}))"
+        )
         self._setup_signal_handlers()
         
         while not self._shutdown_requested:
             try:
                 await self.collect_once()
+                self._consecutive_empty_cycles = 0  # reset on success
             except Exception as e:
                 logger.error(f"Error in continuous run: {e}")
-                
+                self._total_errors += 1
+                self._consecutive_empty_cycles += 1
+                if self._consecutive_empty_cycles >= 10:
+                    logger.warning(
+                        f"STALL DETECTED: {self._consecutive_empty_cycles} consecutive "
+                        f"failed cycles. Total errors: {self._total_errors}. "
+                        f"Check connectivity, API status, and disk space."
+                    )
+            
             if self._shutdown_requested:
                 break
-                
-            await asyncio.sleep(settings.POLL_INTERVAL_SECONDS)
+            
+            # Jittered sleep: ±20% of configured interval to avoid predictable patterns
+            base_interval = settings.POLL_INTERVAL_SECONDS
+            jittered = base_interval * (1 + random.uniform(-0.2, 0.2))
+            await asyncio.sleep(jittered)
         
-        logger.info("Collector stopped gracefully.")
+        logger.info(
+            f"Collector stopped gracefully after {self._cycle_count} cycles. "
+            f"Total matches: {self._total_matches_collected}, "
+            f"Errors: {self._total_errors}"
+        )
             
     async def close(self):
         await self.matches_scraper.close()

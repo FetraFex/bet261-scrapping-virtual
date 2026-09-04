@@ -1,5 +1,6 @@
 from app.clients.http_client import VirtualLeagueClient
 from app.config.settings import settings
+from app.utils.disk_check import save_raw_json
 import json
 import logging
 from pathlib import Path
@@ -26,15 +27,11 @@ class PlayoutScraper:
         
         now = datetime.utcnow()
         date_path = self.raw_data_dir / str(now.year) / f"{now.month:02d}" / f"{now.day:02d}"
-        date_path.mkdir(parents=True, exist_ok=True)
         
         filename = f"{now.strftime('%Y%m%d_%H%M%S')}_round{round_number}_{payload_hash[:8]}.json"
-        filepath = date_path / filename
-        
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(raw_str)
-            
-        logger.info(f"Saved raw playout payload to {filepath}")
+        filepath = save_raw_json(date_path, filename, raw_str)
+        if filepath:
+            logger.info(f"Saved raw playout payload to {filepath}")
         
         return data
 

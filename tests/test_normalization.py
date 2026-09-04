@@ -35,3 +35,19 @@ class TestTeamNormalization:
         assert normalize_team_name("Morocco") == "Morocco"
         assert normalize_team_name("Algeria") == "Algeria"
         assert normalize_team_name("Czechia") == "Czechia"
+
+    def test_acronyms_preserved(self):
+        """Acronyms like USA, DR, IR should remain uppercase."""
+        assert normalize_team_name("USA") == "USA"
+        assert normalize_team_name("usa") == "USA"
+        assert normalize_team_name("USA") == "USA"
+        assert normalize_team_name("Ir Iran") == "IR Iran"
+        assert normalize_team_name("ir iran") == "IR Iran"
+        assert normalize_team_name("Congo Dr") == "Congo DR"
+        assert normalize_team_name("congo dr") == "Congo DR"
+
+    def test_cote_divoire_casing(self):
+        """Cote D'Ivoire should preserve the apostrophe-separated casing."""
+        assert normalize_team_name("Cote d'Ivoire") == "Cote D'Ivoire"
+        assert normalize_team_name("cote d'ivoire") == "Cote D'Ivoire"
+        assert normalize_team_name("COTE D'IVOIRE") == "Cote D'Ivoire"

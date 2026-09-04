@@ -1,6 +1,7 @@
 from app.clients.http_client import VirtualLeagueClient
 from app.models.schemas import MatchesResponseModel
 from app.models.database_models import RawPayload
+from app.utils.disk_check import save_raw_json
 import json
 import logging
 from pathlib import Path
@@ -28,15 +29,11 @@ class MatchesScraper:
         
         now = datetime.utcnow()
         date_path = self.raw_data_dir / str(now.year) / f"{now.month:02d}" / f"{now.day:02d}"
-        date_path.mkdir(parents=True, exist_ok=True)
         
         filename = f"{now.strftime('%Y%m%d_%H%M%S')}_{payload_hash[:8]}.json"
-        filepath = date_path / filename
-        
-        with open(filepath, "w", encoding="utf-8") as f:
-            f.write(raw_str)
-            
-        logger.info(f"Saved raw matches payload to {filepath}")
+        filepath = save_raw_json(date_path, filename, raw_str)
+        if filepath:
+            logger.info(f"Saved raw matches payload to {filepath}")
         
         # Write to raw_payloads DB table if session provided
         if db_session:
@@ -44,7 +41,7 @@ class MatchesScraper:
                 source_type="matches",
                 endpoint=f"/instantleagues/{self._get_league_id()}/matches",
                 payload_hash=payload_hash,
-                storage_path=str(filepath),
+                storage_path=str(filepath) if filepath else None,
                 http_status=200
             )
             db_session.add(raw_payload)

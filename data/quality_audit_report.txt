@@ -1,0 +1,257 @@
+
+======================================================================
+  VIRTUAL LEAGUE COLLECTOR — POST-FIX DATA QUALITY AUDIT
+  Generated: 2026-08-29T19:04:42.567207+00:00
+  Database:  localhost:5433/virtual_league
+======================================================================
+
+======================================================================
+  1. TABLE ROW COUNTS
+======================================================================
+  Table                           Rows
+  ------------------------- ----------
+  leagues                            1
+  teams                             48
+  matches                          144
+  odds_snapshots                   240
+  match_events                     359
+  ranking_snapshots                  6
+  ranking_entries                  288
+  raw_payloads                      24
+  collection_runs                    8
+  scraper_errors                     4
+
+======================================================================
+  2. MATCH STATUS BREAKDOWN
+======================================================================
+  Status            Count  Earliest               Latest                
+  --------------- -------  ---------------------- ----------------------
+  COMPLETED            70  0001-01-01 00:00:00+00 2026-08-29 08:24:18+00
+  UPCOMING             74  0001-01-01 00:00:00+00 2026-08-29 18:59:18+00
+
+======================================================================
+  3. REFERENTIAL INTEGRITY CHECKS
+======================================================================
+  [OK] Matches with no home_team_id: 0
+  [OK] Matches with no away_team_id: 0
+  [OK] Matches with no league_id: 0
+  [OK] Matches with no external_id (or 0): 0
+  [OK] Matches with no scheduled_at: 0
+  [OK] Odds snapshots with no match_id: 0
+  [OK] Match events with no match_id: 0
+  [OK] Ranking entries with no snapshot_id: 0
+  [OK] Ranking entries with no team_id: 0
+
+  ALL referential integrity checks passed.
+
+======================================================================
+  4. DEDUPLICATION HEALTH
+======================================================================
+  [OK] No duplicate external_ids.
+  [OK] Duplicate odds (same match+time): 0
+  [OK] Duplicate ranking entries per snapshot: 0
+  [WARN] Duplicate goal events (same match+minute): 83
+
+======================================================================
+  5. ODDS SANITY CHECKS
+======================================================================
+  Home odds: min=1.29  max=11.43  avg=3.03
+  Draw odds: min=3.27  max=6.65  avg=4.11
+  Away odds: min=1.22  max=10.04  avg=3.21
+  [OK] Zero/negative odds: 0
+  Overround (implied prob sum):
+    min=1.0575  max=1.0621  avg=1.0599  count=240
+    [OK] No overround anomalies (< 1.0)
+  [OK] Extreme odds (>100 or <1.01): 0
+
+======================================================================
+  6. SCORE INTEGRITY CHECKS
+======================================================================
+  [OK] UPCOMING matches with scores: 0
+  [OK] COMPLETED matches without scores: 0
+  [OK] HT scores exceeding FT scores: 0
+  [INFO] 0:0 draws: 5
+  Top score lines:
+    1: 1  (6 matches)
+    3: 1  (6 matches)
+    2: 1  (5 matches)
+    1: 3  (5 matches)
+    0: 1  (5 matches)
+    3: 0  (5 matches)
+    0: 0  (5 matches)
+    2: 2  (5 matches)
+    1: 2  (5 matches)
+    4: 1  (4 matches)
+
+======================================================================
+  7. GOAL EVENT vs SCORE CONSISTENCY
+======================================================================
+  Total goal events: 359
+  [OK] All completed matches with goals have goal events.
+  [INFO] Goal events on non-COMPLETED matches: 10 match(es)
+
+======================================================================
+  8. TEMPORAL INTEGRITY (DATA LEAKAGE)
+======================================================================
+  [OK] Odds snapshots after match completion: 0
+  [OK] Odds snapshots at exact completion time: 0
+  [INFO] UPCOMING matches with scheduled_at in the past: 74
+  [OK] Completed before scheduled: 0
+
+======================================================================
+  9. RANKING SNAPSHOT HEALTH
+======================================================================
+  Snapshots: 6
+  Entries:   288
+  Avg entries/snapshot: 48.0
+  [INFO] Teams without any ranking entry: 0
+  [INFO] Ranking entries without form data: 96
+  [OK] Duplicate ranking snapshots (same hash): 0
+
+======================================================================
+  10. RAW PAYLOAD COVERAGE
+======================================================================
+  Collection runs: 8
+  Raw payloads:    24
+  Avg payloads/run: 3.0
+  Payload types:
+    results                  8
+    matches                  8
+    ranking                  8
+  Raw JSON files on disk: 43
+  [WARN] DB payloads (24) != disk files (43)
+
+======================================================================
+  11. COLLECTION RUN RELIABILITY
+======================================================================
+  Total runs:   8
+  Completed:    8 (100.0%)
+  Failed:       0 (0.0%)
+  Running:      0
+  Success rate: 100.0%
+  Run duration: min=4.8s  max=16.2s  avg=7.1s
+  Scraper errors:
+    playout              fetch_error              4
+
+    ID Started                Status        Matches  Results   Goals
+  ---- ---------------------- ------------ -------- -------- -------
+    12 2026-08-29 18:58:46    COMPLETED          24      576    1752
+    11 2026-08-29 18:58:32    COMPLETED          24      576    1752
+    10 2026-08-29 18:58:16    COMPLETED          24      576    1752
+     9 2026-08-29 08:24:18    COMPLETED          24      552    1549
+     8 2026-08-29 08:20:08    COMPLETED          24      504    1406
+     7 2026-08-26 09:24:05    COMPLETED          24      576    1710
+     6 2026-08-26 09:23:28    COMPLETED          24      576    1710
+     5 2026-08-26 09:22:28    COMPLETED          24      576    1710
+
+======================================================================
+  12. PER-ROUND BREAKDOWN
+======================================================================
+   Round  Matches   Done  Pending Round Start           
+  ------ -------- ------ -------- ----------------------
+      22       24     24        0 0001-01-01 00:00:00   
+      24       24      5       19 2026-08-29 08:24:18   
+      55       24      0       24 2026-08-29 18:59:18   
+
+  Total rounds: 3
+
+======================================================================
+  13. TEAM COVERAGE ANALYSIS
+======================================================================
+  Total teams: 48
+  Team                       Matches  Completed
+  ------------------------- -------- ----------
+  Cote D'Ivoire                    6          2
+  New Zealand                      6          1
+  Scotland                         6          3
+  Usa                              6          4
+  Ecuador                          6          2
+  Norway                           6          3
+  Bosnia-Herzegovina               6          5
+  Czechia                          6          4
+  Spain                            6          2
+  Tunisia                          6          4
+  Ir Iran                          6          3
+  Austria                          6          3
+  Senegal                          6          4
+  Uzbekistan                       6          3
+  Egypt                            6          2
+  South Africa                     6          4
+  Colombia                         6          3
+  Portugal                         6          4
+  Canada                           6          2
+  Algeria                          6          4
+  Qatar                            6          4
+  Mexico                           6          3
+  Paraguay                         6          2
+  Uruguay                          6          2
+  Japan                            6          3
+  Belgium                          6          4
+  Saudi Arabia                     6          3
+  France                           6          3
+  England                          6          1
+  Morocco                          6          3
+  Croatia                          6          4
+  Brazil                           6          4
+  Iraq                             6          3
+  Haiti                            6          2
+  Sweden                           6          1
+  Korea Republic                   6          3
+  Australia                        6          3
+  Jordan                           6          3
+  Argentina                        6          2
+  Netherlands                      6          1
+  Switzerland                      6          4
+  Congo Dr                         6          4
+  Curacao                          6          3
+  Panama                           6          3
+  Ghana                            6          4
+  Cabo Verde                       6          2
+  Germany                          6          1
+  Turkiye                          6          3
+
+  Teams with 0 matches: 0
+
+======================================================================
+  14. ODDS CHANGE FREQUENCY
+======================================================================
+   Snapshots/Match    Matches
+  ---------------- ----------
+                 1         96
+                 3         48
+
+  Total matches with odds: 144
+  Total odds snapshots:    240
+  Avg snapshots/match:     1.67
+
+======================================================================
+  15. EXECUTIVE SUMMARY
+======================================================================
+
+  DATABASE HEALTH:
+    Matches:              144  (70 completed, 74 upcoming)
+    Teams:                 48
+    Odds Snapshots:       240
+    Goal Events:          359
+    Ranking Snapshots:      6
+    Ranking Entries:      288
+    Collection Runs:        8  (8 successful)
+    Raw Payloads:          24
+    Scraper Errors:         4
+
+  COVERAGE:
+    Matches with odds:         144/144 (100.0%)
+    Completed with scores:     70/70 (100.0%)
+    Teams with ranking:        48/48 (100.0%)
+
+  INTEGRITY:
+    Data leakage (odds after completion): 0  [OK]
+    Duplicate external_ids:              0  [OK]
+    Run success rate:                    100.0%
+
+  OVERALL STATUS:  ALL CHECKS PASSED
+
+======================================================================
+  AUDIT COMPLETE
+======================================================================
+

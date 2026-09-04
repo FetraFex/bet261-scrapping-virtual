@@ -49,7 +49,8 @@ class MatchRepository:
         away_odds: float,
         odds_raw_hash: str,
         round_number: Optional[int] = None,
-        collection_run_id: Optional[int] = None
+        collection_run_id: Optional[int] = None,
+        league_name: Optional[str] = None
     ) -> Tuple[Match, bool, bool]:
         """
         Deduplicates matches and manages odds history.
@@ -81,6 +82,7 @@ class MatchRepository:
                 away_team_id=away_team_id,
                 scheduled_at=scheduled_at,
                 round_number=round_number,
+                league_name=league_name,
                 status="UPCOMING",
                 event_sync_status="NOT_APPLICABLE",
                 collection_run_id=collection_run_id
